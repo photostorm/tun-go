@@ -1,24 +1,52 @@
 package main
 
 import (
+	"fmt"
+	"flag"
 	"log"
 	"net"
 	"sync"
+	"time"
 
-	"github.com/FlexibleBroadband/tun-go"
+	"tun-go"
 )
 
+func startUDP(addr *net.UDPAddr) {
+	l, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		log.Fatal("listen udp failed", addr)
+	}
+	buf := make([]byte, 2048)
+	for {
+		n, peer, err := l.ReadFrom(buf)
+		if n>20 {
+			fmt.Println(peer, n, buf[:20])
+		}
+		if err!=nil {
+			log.Println("read error", err)
+		}
+	}
+}
+var laddr string
+var raddr string
+func init() {
+	flag.StringVar(&laddr, "l", "127.0.0.1:37988", "local address")
+	flag.StringVar(&raddr, "r", "192.168.8.111:37988", "remote address")
+	flag.Parse()
+}
 // first start server tun server.
 func main() {
 	wg := sync.WaitGroup{}
-	remoteAddr, err := net.ResolveUDPAddr("udp", "192.168.199.131:37988")
+	remoteAddr, err := net.ResolveUDPAddr("udp", raddr)
 	if err != nil {
 		panic(err)
 	}
-	localAddr, err := net.ResolveUDPAddr("udp", "192.168.199.174:37988")
+	localAddr, err := net.ResolveUDPAddr("udp", laddr)
 	if err != nil {
 		panic(err)
 	}
+	go startUDP(remoteAddr)
+	time.Sleep(time.Second)
 	// local tun interface read and write channel.
 	rCh := make(chan []byte, 1024)
 	wCh := make(chan []byte, 1024)

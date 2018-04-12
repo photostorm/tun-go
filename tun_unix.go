@@ -4,6 +4,7 @@ package tun
 
 import (
 	"fmt"
+	"log"
 	"os"
 )
 
@@ -19,6 +20,10 @@ func write(fd *os.File, ch chan []byte) error {
 }
 
 func read(fd *os.File, mtu int, ch chan []byte) error {
+	log.Println("mtu = ", mtu)
+	if mtu < 1500 {
+		mtu = 2048
+	}
 	buf := make([]byte, mtu)
 	for {
 		n, err := fd.Read(buf)
