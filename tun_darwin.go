@@ -56,12 +56,12 @@ func (tun *tuntap) setupAddress(addr net.IP, network net.IP, mask net.IP) error 
 	return nil
 }
 
-func (tun *tuntap) Write(ch chan []byte) error {
-	return write(tun.fd, ch)
+func (tun *tuntap) Write(buf []byte) (int, error) {
+	return write(tun.fd, buf)
 }
 
-func (tun *tuntap) Read(ch chan []byte) error {
-	return read(tun.fd, tun.mtu, ch)
+func (tun *tuntap) Read(buf []byte) (int, error) {
+	return read(tun.fd, tun.mtu, buf)
 }
 
 func (tun *tuntap) Close() error {

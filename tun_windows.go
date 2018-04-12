@@ -162,7 +162,7 @@ func getTuntapComponentId() (string, error) {
 	return "", errors.New("not found component id")
 }
 
-func (t *tun) Read(ch chan []byte) (err error) {
+func (t *tun) Read(buf []byte) (n int, err error) {
 	overlappedRx := syscall.Overlapped{}
 	var hevent windows.Handle
 	hevent, err = windows.CreateEvent(nil, 0, 0, nil)
@@ -170,7 +170,7 @@ func (t *tun) Read(ch chan []byte) (err error) {
 		return
 	}
 	overlappedRx.HEvent = syscall.Handle(hevent)
-	buf := make([]byte, t.mtu)
+
 	var l uint32
 	for {
 		if err := syscall.ReadFile(t.fd, buf, &l, &overlappedRx); err != nil {
@@ -182,10 +182,10 @@ func (t *tun) Read(ch chan []byte) (err error) {
 		totalLen := 0
 		switch buf[0] & 0xf0 {
 		case 0x40:
-			totalLen = 256*int(buf[2]) + int(buf[3])
+			totalLen = (int(buf[2])<<8) + int(buf[3])
 		case 0x60:
 			continue
-			totalLen = 256*int(buf[4]) + int(buf[5]) + IPv6_HEADER_LENGTH
+			totalLen = (int(buf[4])<<8) + int(buf[5]) + 40
 		}
 		fmt.Println("read data", buf[:totalLen])
 		send := make([]byte, totalLen)
@@ -194,7 +194,7 @@ func (t *tun) Read(ch chan []byte) (err error) {
 	}
 }
 
-func (t *tun) Write(ch chan []byte) (err error) {
+func (t *tun) Write(buf []byte) (int, err error) {
 	overlappedRx := syscall.Overlapped{}
 	var hevent windows.Handle
 	hevent, err = windows.CreateEvent(nil, 0, 0, nil)
@@ -202,15 +202,11 @@ func (t *tun) Write(ch chan []byte) (err error) {
 		return
 	}
 	overlappedRx.HEvent = syscall.Handle(hevent)
-	for {
-		select {
-		case data := <-ch:
-			var l uint32
-			syscall.WriteFile(t.fd, data, &l, &overlappedRx)
-			syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE)
-			overlappedRx.Offset += uint32(len(data))
-		}
-	}
+
+        var l uint32
+        syscall.WriteFile(t.fd, buf, &l, &overlappedRx)
+        syscall.WaitForSingleObject(overlappedRx.HEvent, syscall.INFINITE)
+        overlappedRx.Offset += uint32(len(data))
 }
 
 func (t *tun) Close() error {

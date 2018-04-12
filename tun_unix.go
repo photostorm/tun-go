@@ -8,43 +8,33 @@ import (
 	"os"
 )
 
-func write(fd *os.File, ch chan []byte) error {
-	for {
-		select {
-		case data := <-ch:
-			if _, err := fd.Write(data); err != nil {
-				return err
-			}
-		}
-	}
+func write(fd *os.File, buf []byte) (int, error) {
+        return fd.Write(buf)
 }
 
-func read(fd *os.File, mtu int, ch chan []byte) error {
+func read(fd *os.File, mtu int, buf []byte) (int, error) {
 	log.Println("mtu = ", mtu)
 	if mtu < 1500 {
 		mtu = 2048
 	}
-	buf := make([]byte, mtu)
-	for {
-		n, err := fd.Read(buf)
-		if err != nil {
-			return err
-		}
-		// check length.
-		totalLen := 0
-		switch buf[0] & 0xf0 {
-		case 0x40:
-			totalLen = 256*int(buf[2]) + int(buf[3])
-		case 0x60:
-			totalLen = 256*int(buf[4]) + int(buf[5]) + IPv6_HEADER_LENGTH
-		}
-		if totalLen != n {
-			return fmt.Errorf("read n(%v)!=total(%v)", n, totalLen)
-		}
-		send := make([]byte, totalLen)
-		copy(send, buf)
-		ch <- send
-	}
+	
+        n, err := fd.Read(buf)
+
+        if n>0 {
+                // check length.
+                totalLen := 0
+                switch buf[0] & 0xf0 {
+                case 0x40:
+                        totalLen = (int(buf[2])<<8) + int(buf[3])
+                case 0x60:
+                        totalLen = (int(buf[4])<<8) + int(buf[5]) + 40
+                }
+                if totalLen != n {
+                        return 0, fmt.Errorf("read n(%v)!=total(%v)", n, totalLen)
+                }
+                return n, nil
+        }
+        return 0, err
 }
 
 func close(fd *os.File) error {

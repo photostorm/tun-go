@@ -48,26 +48,34 @@ func main() {
 	go startUDP(remoteAddr)
 	time.Sleep(time.Second)
 	// local tun interface read and write channel.
-	rCh := make(chan []byte, 1024)
-	wCh := make(chan []byte, 1024)
+	rBuf := make([]byte, 2048)
+	wBuf := make([]byte, 2048)
 
 	conn, err := net.DialUDP("udp", localAddr, remoteAddr)
 	if err != nil {
 		panic(err)
 	}
+        
+	tuntap, err := tun.OpenTunTap(net.IPv4(10, 0, 0, 1), net.IPv4(10, 0, 0, 0), net.IPv4(255, 255, 255, 0))
+	if err != nil {
+		panic(err)
+	}
+	defer tuntap.Close()
+        
 	// read from udp conn, and write into tun.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		buff := make([]byte, 4096)
 		for {
-			n, err := conn.Read(buff)
-			if err != nil {
-				panic(err)
-			}
+			n, err := conn.Read(wBuf)
 			// log.Println("tun<-conn:", n)
 			// write into local tun interface channel.
-			wCh <- buff[:n]
+			if n>0 {
+                                tuntap.Write(wBuf[:n])
+                        }
+                        if err != nil {
+				panic(err)
+			}
 		}
 	}()
 	// read from local tun interface channel, and write into remote udp channel.
@@ -75,42 +83,18 @@ func main() {
 	go func() {
 		wg.Done()
 		for {
-			select {
-			case data := <-rCh:
-				// if data[0]&0xf0 == 0x40 {
-				// write into udp conn.
-				log.Println("tun->conn:", len(data))
-				log.Println("read!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-				log.Println("src:", net.IP(data[12:16]), "dst:", net.IP(data[16:20]))
-				if _, err := conn.Write(data); err != nil {
-					panic(err)
-					// }
-				}
-
-			}
+			n, err := tuntap.Read(rBuf)
+                        if n>0 {
+                                log.Println("tun->conn:", n)
+                                log.Println("read!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                                log.Println(rBuf[0]>>4, " src:", net.IP(rBuf[12:16]), "dst:", net.IP(rBuf[16:20]))
+                                conn.Write(rBuf[:n])
+                        }
+                        if err != nil {
+                                panic(err)
+                        }
 		}
 	}()
 
-	tuntap, err := tun.OpenTunTap(net.IPv4(10, 0, 0, 1), net.IPv4(10, 0, 0, 0), net.IPv4(255, 255, 255, 0))
-	if err != nil {
-		panic(err)
-	}
-	defer tuntap.Close()
-	// read data from tun into rCh channel.
-	wg.Add(1)
-	go func() {
-		wg.Done()
-		if err := tuntap.Read(rCh); err != nil {
-			panic(err)
-		}
-	}()
-	// write data into tun from wCh channel.
-	wg.Add(1)
-	go func() {
-		wg.Done()
-		if err := tuntap.Write(wCh); err != nil {
-			panic(err)
-		}
-	}()
 	wg.Wait()
 }
